@@ -1,0 +1,9 @@
+---
+- name: Setup Users
+  import_playbook: users/setup_users.yml
+
+- name: Setup Wireguard
+  import_playbook: wireguard/setup_wireguard.yml
+
+- name: Setup nginx
+  import_playbook: nginx/setup_nginx.yml

@@ -1,0 +1,6 @@
+---
+- name: Install Wireguard
+  import_playbook: ./apt_install_wireguard.yml
+
+- name: Configure wireguard
+  import_playbook: ./configure_wireguard.yml

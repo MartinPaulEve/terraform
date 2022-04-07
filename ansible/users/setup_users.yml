@@ -1,0 +1,6 @@
+---
+- name: Add user
+  import_playbook: ./add_martin_eve.yml
+
+- name: Setup sudoers
+  import_playbook: ./setup_sudoers.yml

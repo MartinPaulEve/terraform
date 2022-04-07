@@ -1,0 +1,115 @@
+# generate wireguard keys on all hosts and the localhost client
+- hosts: all
+  tasks:
+    - name: Generate WireGuard keys
+      become: true
+      shell: "umask 077; wg genkey | tee privatekey | wg pubkey > publickey"
+      args:
+        chdir: /etc/wireguard/
+
+    - name: check if key file already exists
+      stat:
+        path: /home/martin/wireguard/privatekey
+      register: local_private_key
+
+    - name: Generate WireGuard keys on client
+      delegate_to: localhost
+      shell: "umask 077; wg genkey | tee privatekey | wg pubkey > publickey"
+      args:
+        chdir: /home/martin/wireguard/
+      when: local_private_key.stat.exists == False
+
+# setup the wireguard server (the first host in the list)
+- hosts: wireguardserver
+  tasks:
+    - name: Load private key
+      become: true
+      slurp:
+        src: "/etc/wireguard/privatekey"
+      register: server_private_key
+    - name: Load public key
+      become: true
+      slurp:
+        src: "/etc/wireguard/publickey"
+      register: server_public_key
+    - name: Template wireguard configuration to server
+      become: true
+      vars:
+        wireguard_private_key: "{{ server_private_key.content | b64decode }}"
+        client_public_key: "{{ lookup('file', '/home/martin/wireguard/publickey') }}"
+      ansible.builtin.template:
+        src: ../../templates/wireguard.j2
+        dest: /etc/wireguard/wg0.conf
+        owner: bin
+        group: wheel
+        mode: '0644'
+    - name: Template wireguard configuration to client
+      delegate_to: localhost
+      vars:
+        client_private_key: "{{ lookup('file', '/home/martin/wireguard/privatekey') }}"
+        wireguard_public_key: "{{ server_public_key.content | b64decode }}"
+        server_endpoint: "{{ groups['wireguardserver'][0] }}"
+      ansible.builtin.template:
+        src: ../../templates/wireguard_client.j2
+        dest: /home/martin/wireguard/wg0.conf
+        mode: '0600'
+
+# copy the wireguard configuration file to clients
+- hosts: "wireguardclients"
+  tasks:
+    - name: Slurp the private key
+      become: true
+      slurp:
+        src: "/etc/wireguard/privatekey"
+      register: client_server_private_key
+    - name: Slurp the public key
+      become: true
+      slurp:
+        src: "/etc/wireguard/publickey"
+      register: client_server_public_key
+    - name: Template wireguard configuration to server-as-client
+      become: true
+      vars:
+        client_private_key: "{{ client_server_private_key.content | b64decode }}"
+        wireguard_public_key: "{{ hostvars[groups['wireguardserver'][0]]['server_public_key'].content | b64decode }}"
+        server_endpoint: "{{ groups['wireguardserver'][0] }}"
+        ip_suffix: "{{ groups['wireguardclients'].index(inventory_hostname) + 3 }}"
+      ansible.builtin.template:
+        src: ../../templates/wireguard_remote_client.j2
+        dest: /etc/wireguard/wg0.conf
+        owner: bin
+        group: wheel
+        mode: "0644"
+    - name: Append peer details to server
+      delegate_to: "{{ groups['wireguardserver'][0] }}"
+      become: true
+      lineinfile:
+        path: /etc/wireguard/wg0.conf
+        line: "[Peer]\r\nPublicKey = {{ client_server_public_key.content | b64decode }}\r\nAllowedIPs = 192.168.6.{{ groups['wireguardclients'].index(inventory_hostname) + 3 }}/32"
+
+# enable wireguard on all servers
+- hosts: all
+  tasks:
+    - name: Enable wireguard
+      become: true
+      shell: systemctl enable wg-quick@wg0
+      args:
+        chdir: /etc/wireguard/
+
+    - name: Stop wireguard
+      become: true
+      shell: systemctl stop wg-quick@wg0
+      args:
+        chdir: /etc/wireguard/
+
+    - name: Start wireguard
+      become: true
+      shell: systemctl start wg-quick@wg0
+      args:
+        chdir: /etc/wireguard/
+
+    - name: Enable IP forwarding
+      become: true
+      shell: sysctl -w net.ipv4.ip_forward=1
+      args:
+        chdir: /etc/wireguard/

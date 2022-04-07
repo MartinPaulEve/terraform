@@ -1,0 +1,19 @@
+## Set Up WireGuard VPN on Ubuntu By Editing/Creating wg0.conf File ##
+[Interface]
+## VPN server private IP address ##
+Address = 192.168.6.1
+
+## My VPN server port ##
+ListenPort = 41194
+
+## VPN server's private key i.e. /etc/wireguard/privatekey ##
+PrivateKey = {{wireguard_private_key}}
+
+PostUp   = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+
+[Peer]
+PublicKey = {{ client_public_key }}
+AllowedIPs = 192.168.6.2/32
+

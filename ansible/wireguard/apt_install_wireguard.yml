@@ -1,0 +1,9 @@
+# apt install wireguard
+- hosts: all
+  tasks:
+    - name: Apt install wireguard
+      become: true
+      apt:
+        name: wireguard
+        state: present
+        update_cache: yes
